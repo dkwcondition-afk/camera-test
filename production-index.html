@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cycle Time Tracker</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <script src="https://unpkg.com/@zxing/library@0.20.0"></script>
+
+  <style>
+    body {
+      padding: 20px;
+      background-color: #f8f9fa;
+    }
+
+    .card {
+      max-width: 600px;
+      margin: auto;
+    }
+
+    .timer-display {
+      font-size: 3.5rem;
+      font-weight: bold;
+      text-align: center;
+      margin: 20px 0;
+      font-family: monospace;
+    }
+
+    #reader {
+      width: 100%;
+      margin-bottom: 15px;
+      display: none;
+      position: relative;
+    }
+
+    #video {
+      width: 100%;
+      border-radius: 8px;
+      background: #000;
+    }
+
+    #reader::after {
+      content: "";
+      position: absolute;
+      top: 15%; left: 15%; right: 15%; bottom: 15%;
+      border: 3px solid #0d6efd;
+      border-radius: 8px;
+      pointer-events: none;
+    }
+  </style>
+</head>
+
+<body>
+
+  <div class="card shadow-sm">
+    <div class="card-header bg-primary text-white" style="justify-content-center">
+      <h4 class="mb-0">Cycle Time Tracker</h4>
+    </div>
+    <div class="card-body">
+
+      <div id="scanStatus" class="alert alert-warning d-none" role="alert"></div>
+
+      <div id="reader">
+        <video id="video" playsinline muted autoplay></video>
+      </div>
+
+      <div class="text-center mb-3">
+        <button id="closeScannerBtn" class="btn btn-sm btn-danger d-none" onclick="stopScanner()">✕ ปิดกล้อง</button>
+      </div>
+
+      <div class="row g-3">
+
+        <!-- Date -->
+        <div class="col-12">
+          <label class="form-label">Date</label>
+          <input type="date" id="date" class="form-control" required>
+        </div>
+
+        <!-- Item Code -->
+        <div class="col-12 col-md-6">
+          <label class="form-label">Item Code</label>
+          <div class="input-group">
+            <input type="text" id="itemCode" class="form-control">
+            <button class="btn btn-outline-secondary" type="button" onclick="startScanner('itemCode')">📷</button>
+          </div>
+        </div>
+
+        <!-- Item -->
+        <div class="col-12 col-md-6">
+          <label class="form-label">Item</label>
+          <div class="input-group">
+            <input type="text" id="item" class="form-control">
+            <button class="btn btn-outline-secondary" type="button" onclick="startScanner('item')">📷</button>
+          </div>
+        </div>
+
+        <!-- Line -->
+        <div class="col-12 col-md-6">
+          <label class="form-label">Line</label>
+          <div class="input-group">
+            <input type="text" id="line" class="form-control">
+            <button class="btn btn-outline-secondary" type="button" onclick="startScanner('line')">📷</button>
+          </div>
+        </div>
+
+        <!-- Man -->
+        <div class="col-12 col-md-6">
+          <label class="form-label">Man</label>
+          <div class="input-group">
+            <input type="text" id="man" class="form-control">
+            <button class="btn btn-outline-secondary" type="button" onclick="startScanner('man')">📷</button>
+          </div>
+        </div>
+
+        <!-- Employee -->
+        <div class="col-12 col-md-6">
+          <label class="form-label">Employee</label>
+          <div class="input-group">
+            <input type="text" id="employee" class="form-control">
+            <button class="btn btn-outline-secondary" type="button" onclick="startScanner('employee')">📷</button>
+          </div>
+        </div>
+
+        <!-- Cycle STD -->
+        <div class="col-12 col-md-6">
+          <label class="form-label">Cycle STD (sec)</label>
+          <div class="input-group">
+            <input type="number" id="cycleStd" class="form-control">
+            <button class="btn btn-outline-secondary" type="button" onclick="startScanner('cycleStd')">📷</button>
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+
+  </div>
+
+  <hr class="my-4">
+
+  <h5 class="text-center">Stopwatch (3 Rounds)</h5>
+  <div class="timer-display" id="display">0.0</div>
+
+  <div class="d-flex justify-content-center gap-2 mb-4">
+    <button class="btn btn-success" id="btnStart" onclick="startTimer()">▶ Start</button>
+    <button class="btn btn-primary" id="btnRound" onclick="recordRound()" disabled>⏱ Round</button>
+    <button class="btn btn-danger" id="btnEnd" onclick="endTimer()" disabled>⏹ End</button>
+  </div>
+
+  <table class="table table-bordered text-center">
+    <thead class="table-light">
+      <tr>
+        <th>R1 (sec)</th>
+        <th>R2 (sec)</th>
+        <th>R3 (sec)</th>
+        <th>Average</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td id="valR1">-</td>
+        <td id="valR2">-</td>
+        <td id="valR3">-</td>
+        <td id="valAvg" class="fw-bold">-</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="d-grid mt-4">
+    <button class="btn btn-dark btn-lg" id="btnSave" onclick="saveData()">💾 Save to Google Sheets</button>
+  </div>
+
+  </div>
+  </div>
+
+  <script>
+    // ==========================================================
+    // ตั้งค่านี้ก่อนใช้งาน: วาง URL ของ Apps Script Web App ที่ deploy แล้ว
+    // (หน้าตาแบบ https://script.google.com/macros/s/XXXXXXXX/exec)
+    // ==========================================================
+    const WEB_APP_URL = "วาง URL Web App ของคุณตรงนี้";
+
+    // --- Initialization ---
+    document.getElementById('date').valueAsDate = new Date();
+
+    // --- Live Camera QR / Barcode Scanner ---
+    // GitHub Pages เป็นหน้าเว็บระดับบนสุด (ไม่ถูกห่อด้วย iframe แบบ Apps Script)
+    // จึงใช้ getUserMedia แบบสตรีมสดได้ตามปกติ
+    const scanHints = new Map();
+    scanHints.set(ZXing.DecodeHintType.TRY_HARDER, true);
+    const codeReader = new ZXing.BrowserMultiFormatReader(scanHints);
+    let controls = null;
+    let currentInput = "";
+
+    function showStatus(msg, isWarning) {
+      const el = document.getElementById("scanStatus");
+      el.textContent = msg;
+      el.classList.remove("d-none", "alert-info", "alert-warning");
+      el.classList.add(isWarning ? "alert-warning" : "alert-info");
+    }
+
+    function hideStatus() {
+      document.getElementById("scanStatus").classList.add("d-none");
+    }
+
+    async function startScanner(inputId) {
+      hideStatus();
+      currentInput = inputId;
+
+      if (!window.isSecureContext) {
+        showStatus("⚠️ ต้องเปิดผ่าน HTTPS เท่านั้น กล้องถึงจะใช้งานได้", true);
+        return;
+      }
+
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        showStatus("⚠️ เบราว์เซอร์นี้ไม่รองรับกล้อง หรือกำลังเปิดผ่านแอปแชท (LINE/Facebook) กรุณาเปิดด้วย Chrome/Safari จริงๆ", true);
+        return;
+      }
+
+      document.getElementById("reader").style.display = "block";
+      document.getElementById("closeScannerBtn").classList.remove("d-none");
+
+      try {
+        controls = await codeReader.decodeFromConstraints(
+          { video: { facingMode: "environment" } },
+          document.getElementById("video"),
+          (result, err) => {
+            if (result) {
+              document.getElementById(currentInput).value = result.getText();
+              stopScanner();
+            }
+          }
+        );
+      } catch (err) {
+        console.error("Camera error:", err.name, err.message);
+
+        if (err.name === "NotAllowedError" || err.name === "PermissionDeniedError") {
+          showStatus("⚠️ คุณปฏิเสธสิทธิ์กล้อง ไปที่การตั้งค่าเบราว์เซอร์ > สิทธิ์เว็บไซต์ > กล้อง แล้วเปลี่ยนเป็น \"อนุญาต\" จากนั้นรีเฟรชหน้านี้", true);
+        } else if (err.name === "NotFoundError" || err.name === "DevicesNotFoundError") {
+          showStatus("⚠️ ไม่พบกล้องบนอุปกรณ์นี้", true);
+        } else if (err.name === "NotReadableError" || err.name === "TrackStartError") {
+          showStatus("⚠️ กล้องกำลังถูกใช้งานโดยแอปอื่นอยู่ ปิดแอปอื่นที่ใช้กล้องแล้วลองใหม่", true);
+        } else {
+          showStatus("⚠️ เปิดกล้องไม่ได้: " + err.name + " - " + err.message, true);
+        }
+
+        stopScanner();
+      }
+    }
+
+    function stopScanner() {
+      if (controls) {
+        controls.stop();
+        controls = null;
+      }
+      document.getElementById("reader").style.display = "none";
+      document.getElementById("closeScannerBtn").classList.add("d-none");
+    }
+
+    window.addEventListener("beforeunload", () => {
+      if (controls) controls.stop();
+    });
+
+    // --- Timer Logic ---
+    let timerInterval;
+    let startTime;
+    let currentRound = 0;
+    let roundTimes = [0, 0, 0];
+
+    function startTimer() {
+      if (timerInterval) clearInterval(timerInterval);
+
+      currentRound = 0;
+      roundTimes = [0, 0, 0];
+      document.getElementById('valR1').innerText = '-';
+      document.getElementById('valR2').innerText = '-';
+      document.getElementById('valR3').innerText = '-';
+      document.getElementById('valAvg').innerText = '-';
+
+      document.getElementById('btnStart').disabled = true;
+      document.getElementById('btnRound').disabled = false;
+      document.getElementById('btnEnd').disabled = false;
+
+      startTime = Date.now();
+      timerInterval = setInterval(updateDisplay, 100);
+    }
+
+    function updateDisplay() {
+      const elapsed = (Date.now() - startTime) / 1000;
+      document.getElementById('display').innerText = elapsed.toFixed(1);
+    }
+
+    function recordRound() {
+      if (currentRound >= 3) return;
+
+      const elapsed = (Date.now() - startTime) / 1000;
+      roundTimes[currentRound] = parseFloat(elapsed.toFixed(1));
+
+      document.getElementById(`valR${currentRound + 1}`).innerText = roundTimes[currentRound];
+
+      currentRound++;
+
+      if (currentRound < 3) {
+        startTime = Date.now();
+        document.getElementById('display').innerText = "0.0";
+      } else {
+        endTimer();
+      }
+    }
+
+    function endTimer() {
+      if (currentRound < 3) {
+        recordRound();
+      }
+
+      clearInterval(timerInterval);
+      document.getElementById('btnStart').disabled = false;
+      document.getElementById('btnRound').disabled = true;
+      document.getElementById('btnEnd').disabled = true;
+
+      let sum = roundTimes.reduce((a, b) => a + b, 0);
+      let count = roundTimes.filter(t => t > 0).length;
+      let avg = count > 0 ? (sum / count).toFixed(1) : 0;
+      document.getElementById('valAvg').innerText = avg;
+    }
+
+    // --- Save to Google Sheets (via fetch, since this page is NOT hosted by Apps Script) ---
+    function saveData() {
+      const btnSave = document.getElementById('btnSave');
+
+      if (!WEB_APP_URL || WEB_APP_URL.indexOf("script.google.com") === -1) {
+        alert("ยังไม่ได้ตั้งค่า WEB_APP_URL ในโค้ด กรุณาใส่ URL ของ Apps Script Web App ก่อนใช้งาน");
+        return;
+      }
+
+      btnSave.innerText = '⏳ Saving...';
+      btnSave.disabled = true;
+
+      const data = {
+        date: document.getElementById('date').value,
+        itemCode: document.getElementById('itemCode').value,
+        item: document.getElementById('item').value,
+        line: document.getElementById('line').value,
+        man: document.getElementById('man').value,
+        employee: document.getElementById('employee').value,
+        cycleStd: document.getElementById('cycleStd').value || 0,
+        round1: document.getElementById('valR1').innerText,
+        round2: document.getElementById('valR2').innerText,
+        round3: document.getElementById('valR3').innerText,
+        average: document.getElementById('valAvg').innerText
+      };
+
+      fetch(WEB_APP_URL, {
+        method: 'POST',
+        // ใช้ text/plain เจตนา เพื่อเลี่ยง CORS preflight (Apps Script ไม่รองรับ OPTIONS)
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify(data)
+      })
+        .then(res => res.json())
+        .then(response => {
+          alert(response.message + "\nResult: " + response.result);
+        })
+        .catch(err => {
+          alert("Error saving data: " + err.message);
+        })
+        .finally(() => {
+          btnSave.innerText = '💾 Save to Google Sheets';
+          btnSave.disabled = false;
+        });
+    }
+  </script>
+
+</body>
+
+</html>
