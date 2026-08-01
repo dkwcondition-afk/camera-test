@@ -222,8 +222,8 @@
       document.getElementById("closeScannerBtn").classList.remove("d-none");
 
       try {
-        controls = await codeReader.decodeFromConstraints(
-          { video: { facingMode: "environment" } },
+        controls = await codeReader.decodeFromVideoDevice(
+          undefined,
           document.getElementById("video"),
           (result, err) => {
             if (result) {
