@@ -185,11 +185,15 @@
     document.getElementById('date').valueAsDate = new Date();
 
     // --- Live Camera QR / Barcode Scanner ---
-    // GitHub Pages เป็นหน้าเว็บระดับบนสุด (ไม่ถูกห่อด้วย iframe แบบ Apps Script)
-    // จึงใช้ getUserMedia แบบสตรีมสดได้ตามปกติ
+    // ปรับให้สแกนไวขึ้น:
+    // 1) จำกัด format ให้เหลือแค่ QR_CODE (ไม่ต้องลองไล่ทุก barcode format -> ลดเวลาประมวลผลต่อเฟรม)
+    // 2) ปิด TRY_HARDER (แม่นขึ้นแต่ช้าลง) เพื่อความไว เปิดเฉพาะตอน fallback ถ้าจำเป็น
+    // 3) ขอกล้องหลัง (facingMode: environment) และตั้งความละเอียดที่พอเหมาะ ไม่ใหญ่เกินไป
+    //    (ความละเอียดสูงเกินทำให้ decode ต่อเฟรมช้าลงโดยไม่จำเป็น)
     const scanHints = new Map();
-    scanHints.set(ZXing.DecodeHintType.TRY_HARDER, true);
-    const codeReader = new ZXing.BrowserMultiFormatReader(scanHints);
+    scanHints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, [ZXing.BarcodeFormat.QR_CODE]);
+    scanHints.set(ZXing.DecodeHintType.TRY_HARDER, false);
+    const codeReader = new ZXing.BrowserMultiFormatReader(scanHints, 100); // scan every ~100ms
     let controls = null;
     let currentInput = "";
 
@@ -221,9 +225,21 @@
       document.getElementById("reader").style.display = "block";
       document.getElementById("closeScannerBtn").classList.remove("d-none");
 
+      // ใช้กล้องหลัง + ความละเอียดที่พอเหมาะเพื่อสแกนไวขึ้น
+      const constraints = {
+        video: {
+          facingMode: { ideal: "environment" },
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+          // ขอ focus mode ต่อเนื่องถ้ารองรับ ช่วยให้โฟกัส QR เร็วขึ้น
+          advanced: [{ focusMode: "continuous" }]
+        },
+        audio: false
+      };
+
       try {
-        controls = await codeReader.decodeFromVideoDevice(
-          undefined,
+        controls = await codeReader.decodeFromConstraints(
+          constraints,
           document.getElementById("video"),
           (result, err) => {
             if (result) {
@@ -234,6 +250,25 @@
         );
       } catch (err) {
         console.error("Camera error:", err.name, err.message);
+
+        // ถ้าขอกล้องหลังแบบเจาะจงไม่ได้ (บางอุปกรณ์/บาง browser) ลองใหม่แบบ fallback ทั่วไป
+        if (err.name === "OverconstrainedError") {
+          try {
+            controls = await codeReader.decodeFromVideoDevice(
+              undefined,
+              document.getElementById("video"),
+              (result, err2) => {
+                if (result) {
+                  document.getElementById(currentInput).value = result.getText();
+                  stopScanner();
+                }
+              }
+            );
+            return;
+          } catch (err2) {
+            console.error("Fallback camera error:", err2.name, err2.message);
+          }
+        }
 
         if (err.name === "NotAllowedError" || err.name === "PermissionDeniedError") {
           showStatus("⚠️ คุณปฏิเสธสิทธิ์กล้อง ไปที่การตั้งค่าเบราว์เซอร์ > สิทธิ์เว็บไซต์ > กล้อง แล้วเปลี่ยนเป็น \"อนุญาต\" จากนั้นรีเฟรชหน้านี้", true);
